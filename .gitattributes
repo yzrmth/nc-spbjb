@@ -1,0 +1,5 @@
+# Script ini dijalankan di dalam container Linux (Postgres entrypoint).
+# Paksa LF supaya checkout di Windows (core.autocrlf=true) tidak merusaknya.
+*.sh text eol=lf
+init-db/** text eol=lf
+Caddyfile text eol=lf

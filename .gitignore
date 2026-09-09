@@ -1,0 +1,8 @@
+# Secrets - JANGAN pernah commit (isi password asli)
+.env
+
+# Hasil backup lokal
+/backup/
+
+# Instruksi editor AI, tidak perlu ikut repo
+CLAUDE.md

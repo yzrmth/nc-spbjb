@@ -1,0 +1,78 @@
+# =============================================================================
+# Caddyfile - fase LAN (HTTPS dengan sertifikat internal/self-signed)
+#
+# Dua host dipisah koma supaya bisa diakses dari localhost (di laptop ini)
+# maupun dari device lain di LAN yang sama lewat IP. IP LAN laptop bisa
+# berubah (DHCP) - kalau berubah, cek lagi dengan `ipconfig` dan update baris
+# di bawah + NEXTCLOUD_TRUSTED_DOMAINS di .env.
+# Nanti saat pindah ke PC workstation: ganti IP di bawah jadi IP LAN
+# workstation, dan samakan dengan NEXTCLOUD_TRUSTED_DOMAINS +
+# NEXTCLOUD_OVERWRITE_CLI_URL di .env.
+# =============================================================================
+
+{
+	# Browser/klien tidak mengirim SNI kalau host tujuannya IP literal (sesuai
+	# spec TLS, SNI cuma untuk hostname) - tanpa ini Caddy tidak tahu
+	# sertifikat mana yang harus dipakai untuk koneksi semacam itu dan
+	# handshake gagal (client lihat ERR_SSL_PROTOCOL_ERROR). Set ke IP LAN
+	# yang dipakai untuk akses; update juga kalau IP berubah.
+	default_sni 192.168.100.149
+}
+
+localhost, 192.168.100.149 {
+	# `tls internal` membuat Caddy jadi CA lokal dan menerbitkan sertifikat
+	# sendiri untuk IP ini. Browser akan menampilkan warning "not trusted"
+	# kecuali kamu import root CA Caddy ke trust store OS/browser client -
+	# ini normal untuk akses LAN, cukup klik "lanjutkan" atau import CA-nya.
+	tls internal
+
+	encode gzip
+
+	# Header yang direkomendasikan dokumentasi Nextcloud (hardening.html).
+	header {
+		Strict-Transport-Security "max-age=15768000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		X-Permitted-Cross-Domain-Policies "none"
+		Referrer-Policy "no-referrer"
+		# Sembunyikan header "Server: Caddy" bawaan.
+		-Server
+	}
+
+	# Redirect wajib untuk auto-discovery CardDAV/CalDAV oleh client
+	# (Nextcloud Desktop/Contacts/Calendar app, dll).
+	redir /.well-known/carddav /remote.php/dav 301
+	redir /.well-known/caldav /remote.php/dav 301
+
+	reverse_proxy nextcloud:80 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# =============================================================================
+# FASE PUBLIC (nanti, via Cloudflare Tunnel) - contoh perubahan yang perlu
+# dilakukan saat itu tiba:
+#
+# cloud.namadomainmu.com {
+#     # HAPUS baris "tls internal" di atas untuk domain public ini.
+#     # Cloudflare Tunnel (cloudflared) sudah menangani TLS untuk trafik dari
+#     # internet ke edge Cloudflare; koneksi cloudflared -> Caddy di jaringan
+#     # docker internal cukup HTTP biasa, jadi bisa juga langsung arahkan
+#     # cloudflared ke service `nextcloud:80` tanpa lewat Caddy sama sekali.
+#     # Kalau tetap ingin lewat Caddy (mis. supaya header/security policy
+#     # konsisten), pakai blok header & redirect yang sama seperti di atas.
+#
+#     encode gzip
+#     header { ... sama seperti di atas ... }
+#     redir /.well-known/carddav /remote.php/dav 301
+#     redir /.well-known/caldav /remote.php/dav 301
+#     reverse_proxy nextcloud:80 {
+#         header_up X-Forwarded-Proto https
+#     }
+# }
+#
+# Tambahkan service `cloudflared` di docker-compose.yml, hubungkan ke network
+# `frontend`, lalu jalankan `cloudflared tunnel run` dengan token/credentials
+# dari dashboard Cloudflare Zero Trust.
+# =============================================================================
